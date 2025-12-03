@@ -4,50 +4,58 @@ const { Pool } = require("pg");
 const app = express();
 app.use(express.json());
 
-// Connect to PostgreSQL using Railway variable
+// ✅ Connect to PostgreSQL (Railway)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: false   // because your DB is on a local VM
+  ssl: false
 });
 
-// Test route
+// ✅ AUTO-CREATE TABLE (runs on startup)
+pool.query(`
+  CREATE TABLE IF NOT EXISTS sensor_data (
+    id SERIAL PRIMARY KEY,
+    sensor VARCHAR(50),
+    value INTEGER,
+    timestamp BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )
+`).then(() => {
+  console.log("sensor_data table is ready");
+}).catch(err => {
+  console.error("Table creation failed:", err);
+});
+
+// ✅ TEST ROUTE
 app.get("/", (req, res) => {
-  res.send("API + Database connected");
+  res.send("Studenthousing API is running");
 });
 
-// ENERGY DATA ENDPOINT
-app.post("/energy", async (req, res) => {
+// ✅ ARDUINO MOTION SENSOR ENDPOINT
+app.post("/api/receive-data", async (req, res) => {
   try {
-    const {
-      datum,
-      n,
-      elektriciteit,
-      beginstand,
-      eindstand,
-      kosten,
-      kwh
-    } = req.body;
+    const { sensor, value, timestamp } = req.body;
 
-    // Insert into database
+    if (!sensor || value === undefined || !timestamp) {
+      return res.status(400).json({ error: "Missing fields" });
+    }
+
     const query = `
-      INSERT INTO energy_data
-      (datum, n, elektriciteit, beginstand, eindstand, kosten, kwh)
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      INSERT INTO sensor_data (sensor, value, timestamp)
+      VALUES ($1, $2, $3)
     `;
 
-    const values = [datum, n, elektriciteit, beginstand, eindstand, kosten, kwh];
-
+    const values = [sensor, value, timestamp];
     await pool.query(query, values);
 
     res.json({ ok: true });
 
   } catch (err) {
-    console.error(err);
+    console.error("Insert error:", err);
     res.status(500).json({ error: "Database insert failed" });
   }
 });
 
-// Start server
+// ✅ START SERVER
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("Server running on port", PORT);
